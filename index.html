@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Аналитика входящих обращений</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Onest:wght@300;400;500;600;700&display=swap');
+:root{
+  --bg:#0f1117;--surface:#181c27;--surface2:#1e2333;--border:#2a3045;
+  --text:#e8ecf4;--muted:#8892a4;--accent:#4f7cff;--accent2:#7c5cff;
+  --red:#ff4545;--yellow:#f5c842;--pale:#7ecf72;--bright:#2dff6e;
+  --shadow:0 8px 32px rgba(0,0,0,.45);--r:12px;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Onest',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
+
+/* LOGIN */
+#login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;
+  background:radial-gradient(ellipse at 30% 20%,#1a2040 0%,#0f1117 60%);}
+.lcard{background:var(--surface);border:1px solid var(--border);border-radius:20px;
+  padding:44px 40px;width:400px;box-shadow:var(--shadow);}
+.lcard .logo{font-size:34px;margin-bottom:8px;}
+.lcard h1{font-size:21px;font-weight:700;margin-bottom:4px;}
+.lcard p{font-size:13px;color:var(--muted);margin-bottom:28px;line-height:1.5;}
+.flabel{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;
+  letter-spacing:.08em;margin-bottom:7px;}
+.finput{width:100%;background:var(--surface2);border:1px solid var(--border);
+  border-radius:10px;padding:11px 14px;color:var(--text);font-family:'Onest',sans-serif;
+  font-size:14px;outline:none;transition:border-color .15s;margin-bottom:16px;}
+.finput:focus{border-color:var(--accent);}
+.lbtn{width:100%;background:linear-gradient(135deg,var(--accent),var(--accent2));
+  border:none;border-radius:10px;padding:13px;color:#fff;font-family:'Onest',sans-serif;
+  font-size:15px;font-weight:600;cursor:pointer;transition:opacity .15s;margin-top:4px;}
+.lbtn:hover{opacity:.88;}
+.lerr{color:var(--red);font-size:13px;margin-top:10px;text-align:center;min-height:18px;}
+
+/* HEADER */
+.hdr{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 22px;
+  display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50;}
+.hdr-l{display:flex;align-items:center;gap:11px;}
+.hdr-logo{font-size:20px;}
+.hdr-title{font-size:15px;font-weight:600;}
+.hdr-sub{font-size:11px;color:var(--muted);}
+.uchip{display:flex;align-items:center;gap:8px;background:var(--surface2);
+  border:1px solid var(--border);border-radius:30px;padding:5px 13px 5px 7px;font-size:13px;}
+.uavatar{width:27px;height:27px;border-radius:50%;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;}
+.xbtn{background:none;border:none;color:var(--muted);cursor:pointer;
+  font-size:17px;padding:2px 7px;border-radius:6px;transition:color .15s;}
+.xbtn:hover{color:var(--red);}
+
+/* MAIN */
+.main{max-width:860px;margin:0 auto;padding:26px 18px 60px;}
+.dbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px;}
+.dlabel{font-size:12px;color:var(--muted);}
+.dval{font-size:14px;font-weight:600;}
+.tchip{display:flex;align-items:center;gap:7px;background:var(--surface2);
+  border:1px solid var(--border);border-radius:30px;padding:6px 13px;font-size:13px;}
+.tdot{width:7px;height:7px;border-radius:50%;background:var(--bright);animation:pulse 1.5s infinite;}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.4;transform:scale(.7);}}
+
+/* LEGEND */
+.legend{display:flex;gap:14px;flex-wrap:wrap;background:var(--surface);
+  border:1px solid var(--border);border-radius:var(--r);padding:12px 15px;margin-bottom:20px;}
+.li{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);}
+.ldot{width:9px;height:9px;border-radius:3px;flex-shrink:0;}
+
+/* SLOTS */
+.stitle{font-size:11px;font-weight:600;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px;}
+.sgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:22px;}
+.scard{background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r);padding:13px;transition:all .2s;position:relative;}
+.scard.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent),inset 0 0 0 999px rgba(79,124,255,.03);}
+.scard.future{opacity:.35;pointer-events:none;}
+.scard.warn{border-color:rgba(255,69,69,.55);animation:warnpulse 2s infinite;}
+@keyframes warnpulse{0%,100%{box-shadow:0 0 0 0 rgba(255,69,69,.3);}50%{box-shadow:0 0 0 5px rgba(255,69,69,.0);}}
+.stime{font-size:11px;color:var(--muted);font-weight:500;margin-bottom:9px;}
+.sinput{width:100%;background:var(--surface2);border:1px solid var(--border);
+  border-radius:8px;padding:8px 10px;color:var(--text);font-family:'Onest',sans-serif;
+  font-size:16px;font-weight:700;text-align:center;outline:none;transition:border-color .15s;}
+.sinput:focus{border-color:var(--accent);}
+.sinput::placeholder{color:var(--muted);font-weight:400;font-size:12px;}
+.shint{font-size:10px;color:var(--muted);margin-top:5px;text-align:center;}
+.sbar{height:3px;border-radius:2px;margin-top:9px;background:var(--border);transition:background .3s;}
+
+/* colour helpers */
+.bgr{background:rgba(255,69,69,.12);border-color:rgba(255,69,69,.3)!important;}
+.bgy{background:rgba(245,200,66,.1);border-color:rgba(245,200,66,.3)!important;}
+.bgp{background:rgba(126,207,114,.1);border-color:rgba(126,207,114,.3)!important;}
+.bgb{background:rgba(45,255,110,.1);border-color:rgba(45,255,110,.3)!important;}
+.brr{background:#ff4545!important;}.bry{background:#f5c842!important;}
+.brp{background:#7ecf72!important;}.brb{background:#2dff6e!important;}
+
+/* SUMMARY */
+.srow{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px;}
+.ssum{background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r);padding:14px;text-align:center;}
+.sval{font-size:26px;font-weight:700;line-height:1;margin-bottom:4px;}
+.ssub{font-size:11px;color:var(--muted);}
+
+/* COMMENT */
+.csec{background:var(--surface);border:1px solid rgba(255,69,69,.25);
+  border-radius:var(--r);padding:14px;margin-bottom:20px;display:none;}
+.csec.on{display:block;}
+.ctitle{font-size:12px;color:var(--red);font-weight:600;margin-bottom:8px;}
+.cinput{width:100%;background:var(--surface2);border:1px solid var(--border);
+  border-radius:8px;padding:9px;color:var(--text);font-family:'Onest',sans-serif;
+  font-size:13px;resize:vertical;min-height:56px;outline:none;}
+.cinput:focus{border-color:var(--red);}
+.cinput::placeholder{color:var(--muted);}
+
+/* SAVE */
+.savebtn{width:100%;background:linear-gradient(135deg,var(--accent),var(--accent2));
+  border:none;border-radius:var(--r);padding:13px;color:#fff;
+  font-family:'Onest',sans-serif;font-size:15px;font-weight:600;cursor:pointer;transition:opacity .15s;}
+.savebtn:hover{opacity:.88;}
+
+/* ADMIN */
+#admin-screen{display:none;}
+.amain{max-width:1080px;margin:0 auto;padding:26px 18px 60px;}
+.atabs{display:flex;gap:7px;margin-bottom:16px;flex-wrap:wrap;}
+.atab{padding:7px 15px;border-radius:20px;border:1px solid var(--border);
+  background:var(--surface);color:var(--muted);font-family:'Onest',sans-serif;
+  font-size:13px;cursor:pointer;transition:all .15s;}
+.atab.on{background:var(--accent);border-color:var(--accent);color:#fff;}
+.expbtn{padding:8px 17px;border-radius:10px;border:1px solid var(--border);
+  background:var(--surface2);color:var(--text);font-family:'Onest',sans-serif;
+  font-size:13px;cursor:pointer;transition:all .15s;}
+.expbtn:hover{border-color:var(--accent);color:var(--accent);}
+.apcard{background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r);overflow:hidden;margin-bottom:13px;}
+.aphdr{display:flex;align-items:center;gap:10px;padding:12px 16px;
+  border-bottom:1px solid var(--border);background:var(--surface2);}
+.apname{font-size:14px;font-weight:600;flex:1;}
+.apavg{font-size:14px;font-weight:700;padding:2px 10px;border-radius:8px;}
+.aplast{font-size:11px;color:var(--muted);margin-left:auto;}
+.aprow{display:flex;padding:10px 16px;gap:5px;flex-wrap:wrap;}
+.achip{display:flex;flex-direction:column;align-items:center;gap:2px;
+  padding:6px 9px;border-radius:8px;min-width:50px;border:1px solid transparent;}
+.achip-t{font-size:9px;color:var(--muted);}
+.achip-v{font-size:14px;font-weight:700;}
+.achip.empty{background:rgba(255,255,255,.02);border-color:var(--border);opacity:.4;}
+.achip.cr{background:rgba(255,69,69,.1);border-color:rgba(255,69,69,.2);}
+.achip.cy{background:rgba(245,200,66,.1);border-color:rgba(245,200,66,.2);}
+.achip.cp{background:rgba(126,207,114,.1);border-color:rgba(126,207,114,.2);}
+.achip.cb{background:rgba(45,255,110,.1);border-color:rgba(45,255,110,.2);}
+.apcmt{padding:0 16px 10px;font-size:12px;color:var(--red);}
+.empty-state{text-align:center;padding:44px;color:var(--muted);font-size:14px;}
+
+/* NOTIFICATION */
+#notif-overlay{display:none;position:fixed;inset:0;z-index:2000;
+  background:rgba(0,0,0,.75);backdrop-filter:blur(6px);
+  align-items:center;justify-content:center;}
+#notif-overlay.show{display:flex;}
+.nbox{background:var(--surface);border:2px solid var(--accent);border-radius:20px;
+  padding:34px 38px;text-align:center;max-width:340px;width:90%;
+  box-shadow:0 0 70px rgba(79,124,255,.35);animation:npop .4s cubic-bezier(.34,1.56,.64,1);}
+@keyframes npop{from{transform:scale(.7);opacity:0;}to{transform:scale(1);opacity:1;}}
+.nicon{font-size:46px;margin-bottom:10px;}
+.ntitle{font-size:19px;font-weight:700;margin-bottom:6px;}
+.nperiod{font-size:20px;font-weight:700;color:var(--accent);margin-bottom:6px;}
+.nbody{font-size:13px;color:var(--muted);line-height:1.5;margin-bottom:22px;}
+.ndismiss{background:linear-gradient(135deg,var(--accent),var(--accent2));
+  border:none;border-radius:10px;padding:11px 28px;color:#fff;
+  font-family:'Onest',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:opacity .15s;}
+.ndismiss:hover{opacity:.85;}
+
+/* TOAST */
+#toast{position:fixed;bottom:18px;left:50%;
+  transform:translateX(-50%) translateY(70px);
+  background:var(--surface);border:1px solid var(--border);border-radius:30px;
+  padding:9px 20px;font-size:13px;z-index:600;
+  transition:transform .3s cubic-bezier(.34,1.56,.64,1);
+  box-shadow:var(--shadow);white-space:nowrap;}
+#toast.on{transform:translateX(-50%) translateY(0);}
+
+/* CREDENTIALS TABLE */
+.creds-table{width:100%;border-collapse:collapse;margin-top:16px;font-size:13px;}
+.creds-table th{text-align:left;padding:8px 10px;border-bottom:2px solid var(--border);color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;}
+.creds-table td{padding:7px 10px;border-bottom:1px solid var(--border);}
+.creds-table tr:last-child td{border-bottom:none;}
+.mono{font-family:monospace;background:var(--surface2);padding:1px 6px;border-radius:4px;font-size:12px;}
+
+::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+@media(max-width:600px){
+  .srow{grid-template-columns:1fr 1fr;}
+  .lcard{width:100%;margin:14px;padding:28px 20px;}
+  .sgrid{grid-template-columns:repeat(2,1fr);}
+}
+</style>
+</head>
+<body>
+
+<!-- ════ LOGIN ════ -->
+<div id="login-screen">
+  <div class="lcard">
+    <div class="logo">📊</div>
+    <h1>Аналитика обращений</h1>
+    <p>Система учёта и анализа входящих обращений от продавцов через веб-КЦ</p>
+    <div class="flabel">Логин</div>
+    <input class="finput" id="li" type="text" placeholder="Введите логин" autocomplete="username">
+    <div class="flabel">Пароль</div>
+    <input class="finput" id="pi" type="password" placeholder="Введите пароль"
+      autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+    <button class="lbtn" onclick="doLogin()">Войти →</button>
+    <div class="lerr" id="lerr"></div>
+  </div>
+</div>
+
+<!-- ════ APP ════ -->
+<div id="app-screen">
+  <div class="hdr">
+    <div class="hdr-l">
+      <span class="hdr-logo">📊</span>
+      <div>
+        <div class="hdr-title">Аналитика обращений</div>
+        <div class="hdr-sub" id="app-shift">—</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:9px;">
+      <div class="uchip">
+        <div class="uavatar" id="uav">ИИ</div>
+        <span id="uname">—</span>
+      </div>
+      <button class="xbtn" onclick="logout()" title="Выйти">✕</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="dbar">
+      <div><div class="dlabel">Сегодня</div><div class="dval" id="today">—</div></div>
+      <div class="tchip"><div class="tdot"></div><span id="clock">—</span></div>
+    </div>
+
+    <div class="legend">
+      <div class="li"><div class="ldot" style="background:#ff4545;"></div>1–3 / час</div>
+      <div class="li"><div class="ldot" style="background:#f5c842;"></div>4–5 / час</div>
+      <div class="li"><div class="ldot" style="background:#7ecf72;"></div>6 / час</div>
+      <div class="li"><div class="ldot" style="background:#2dff6e;"></div>≥7 / час</div>
+      <div class="li" style="margin-left:auto;font-size:11px;">💡 Введите значение счётчика веб-КЦ на конец каждого часа</div>
+    </div>
+
+    <div class="stitle">📥 Значение счётчика в веб-КЦ (на конец часа)</div>
+    <div class="sgrid" id="sgrid"></div>
+
+    <div id="csec" class="csec">
+      <div class="ctitle">🔴 Есть красные интервалы — укажите причину</div>
+      <textarea class="cinput" id="cmt"
+        placeholder="Например: сложные обращения, техническая неполадка, дежурство, не назначаются диалоги…" rows="3"></textarea>
+    </div>
+
+    <div class="srow">
+      <div class="ssum"><div class="sval" id="stotal">0</div><div class="ssub">всего обращений</div></div>
+      <div class="ssum"><div class="sval" id="savg">—</div><div class="ssub">среднее / час</div></div>
+      <div class="ssum"><div class="sval" id="sdone">0/0</div><div class="ssub">заполнено слотов</div></div>
+    </div>
+    <button class="savebtn" onclick="saveData()">💾 Сохранить данные</button>
+  </div>
+</div>
+
+<!-- ════ ADMIN ════ -->
+<div id="admin-screen">
+  <div class="hdr">
+    <div class="hdr-l">
+      <span class="hdr-logo">📋</span>
+      <div>
+        <div class="hdr-title">Панель руководителя</div>
+        <div class="hdr-sub">Сводная аналитика команды</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <button class="expbtn" onclick="exportCSV()">⬇ Экспорт CSV</button>
+      <button class="expbtn" onclick="showCreds()">🔑 Логины</button>
+      <div class="tchip"><div class="tdot"></div><span id="aclock">—</span></div>
+      <button class="xbtn" onclick="logout()">✕</button>
+    </div>
+  </div>
+  <div class="amain">
+    <div style="font-size:13px;color:var(--muted);margin-bottom:14px;" id="adate">—</div>
+    <div class="atabs" id="atabs"></div>
+    <div id="agrid"><div class="empty-state">⏳ Нет данных за сегодня</div></div>
+  </div>
+</div>
+
+<!-- NOTIF -->
+<div id="notif-overlay">
+  <div class="nbox">
+    <div class="nicon" id="nicon">⏰</div>
+    <div class="ntitle" id="ntitle">Время вносить данные!</div>
+    <div class="nperiod" id="nperiod"></div>
+    <div class="nbody" id="nbody"></div>
+    <button class="ndismiss" onclick="dismissNotif()">Понял, заполняю →</button>
+  </div>
+</div>
+
+<!-- CREDS MODAL -->
+<div id="creds-overlay" style="display:none;position:fixed;inset:0;z-index:3000;
+  background:rgba(0,0,0,.8);backdrop-filter:blur(6px);align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:20px;
+    padding:28px 32px;max-width:680px;width:94%;max-height:80vh;overflow-y:auto;box-shadow:var(--shadow);">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <div style="font-size:17px;font-weight:700;">🔑 Логины и пароли сотрудников</div>
+      <button class="xbtn" onclick="hideCreds()" style="font-size:20px;">✕</button>
+    </div>
+    <div id="creds-body"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════
+//  USERS & SHIFTS
+// ══════════════════════════════════════════
+const USERS = {
+  'admin':       { password:'Admin2025!',  name:'Руководитель',                       isAdmin:true },
+  'shevtsova':   { password:'Ks4908!',     name:'Шевцова Ксения Сергеевна',           tab:'4908781', shiftId:'04-16' },
+  'kochetkova':  { password:'As5249!',     name:'Кочеткова Арина Сергеевна',          tab:'5249346', shiftId:'04-16' },
+  'horinoeva':   { password:'Ag5251!',     name:'Хориноева Анастасия Георгиевна',     tab:'5251056', shiftId:'04-16' },
+  'golubeva':    { password:'Em5251!',     name:'Голубева Евгения Михайловна',         tab:'5251448', shiftId:'04-16' },
+  'serova':      { password:'Vd5088!',     name:'Серова Валентина Дмитриевна',         tab:'5088577', shiftId:'04-16' },
+  'varlamova':   { password:'Yv5597!',     name:'Варламова Яна Васильевна',            tab:'5597595', shiftId:'04-16' },
+  'goryachkina': { password:'La5598!',     name:'Горячкина Людмила Альбертовна',       tab:'5598936', shiftId:'04-16' },
+  'chekmezova':  { password:'Aa5597!',     name:'Чекмезова Анна Андреевна',            tab:'5597881', shiftId:'04-16' },
+  'kekveeva':    { password:'Da5598!',     name:'Кеквеева Дина Александровна',         tab:'5598879', shiftId:'04-16' },
+  'avdeeva':     { password:'Ev5601!',     name:'Авдеева Евгения Викторовна',          tab:'5601709', shiftId:'04-16' },
+  'makkaveev':   { password:'Va5253!',     name:'Маккавеев Владислав Александрович',   tab:'5253430', shiftId:'07-19' },
+  'ilyin':       { password:'Ga5253!',     name:'Ильин Глеб Александрович',            tab:'5253533', shiftId:'07-19' },
+  'gariga':      { password:'Da5602!',     name:'Гарига Дарья Андреевна',              tab:'5602273', shiftId:'07-19' },
+  'makushin':    { password:'Mm4368!',     name:'Макушин Максим Юрьевич',              tab:'4368992', shiftId:'06-15' },
+};
+
+const SHIFTS = {
+  '04-16':{ label:'График 04:00–16:00', slots:['04','05','06','07','08','09','10','11','12','13','14','15'] },
+  '07-19':{ label:'График 07:00–19:00', slots:['07','08','09','10','11','12','13','14','15','16','17','18'] },
+  '06-15':{ label:'График 06:00–15:00', slots:['06','07','08','09','10','11','12','13','14'] },
+};
+
+// ══════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════
+let CU = null;          // current user object
+let NS = {};            // notif state: { hh: { pre:bool, post:bool } }
+let tickerInterval = null;
+let adminShift = '04-16';
+
+// ══════════════════════════════════════════
+//  LOGIN
+// ══════════════════════════════════════════
+function doLogin(){
+  const login = document.getElementById('li').value.trim().toLowerCase();
+  const pass  = document.getElementById('pi').value;
+  const u     = USERS[login];
+  if(!u || u.password !== pass){
+    document.getElementById('lerr').textContent = '⚠ Неверный логин или пароль';
+    document.getElementById('pi').value = '';
+    return;
+  }
+  document.getElementById('lerr').textContent = '';
+  CU = { login, ...u };
+  NS = {};
+  u.isAdmin ? showAdmin() : showApp();
+}
+
+function logout(){
+  CU = null;
+  clearInterval(tickerInterval);
+  tickerInterval = null;
+  ['li','pi'].forEach(id => document.getElementById(id).value='');
+  document.getElementById('lerr').textContent='';
+  show('login-screen'); hide('app-screen'); hide('admin-screen');
+}
+
+// ══════════════════════════════════════════
+//  SCREENS
+// ══════════════════════════════════════════
+function showApp(){
+  hide('login-screen'); show('app-screen'); hide('admin-screen');
+  const shift = SHIFTS[CU.shiftId];
+  const parts = CU.name.split(' ');
+  document.getElementById('uav').textContent   = parts.slice(0,2).map(s=>s[0]).join('');
+  document.getElementById('uname').textContent = parts[0]+' '+(parts[1]?.[0]||'')+'.';
+  document.getElementById('app-shift').textContent = shift.label;
+  buildSlots();
+  startTicker();
+  askNotifPerm();
+}
+
+function showAdmin(){
+  hide('login-screen'); hide('app-screen'); show('admin-screen');
+  renderAdmin('04-16');
+  startTicker();
+}
+
+function show(id){ document.getElementById(id).style.display='block'; }
+function hide(id){ document.getElementById(id).style.display='none'; }
+
+// ══════════════════════════════════════════
+//  STORAGE
+// ══════════════════════════════════════════
+function todayStr(){ return new Date().toISOString().slice(0,10); }
+function skey(name,date){ return 'tr_'+date+'_'+name.replace(/\s+/g,'_'); }
+function load(name,date){ try{return JSON.parse(localStorage.getItem(skey(name,date))||'null');}catch{return null;} }
+function save(name,date,data){ localStorage.setItem(skey(name,date),JSON.stringify(data)); }
+
+// ══════════════════════════════════════════
+//  SLOTS
+// ══════════════════════════════════════════
+function pad(n){ return String(n).padStart(2,'0'); }
+
+function buildSlots(){
+  const grid  = document.getElementById('sgrid');
+  grid.innerHTML = '';
+  const shift = SHIFTS[CU.shiftId];
+  const saved = load(CU.name, todayStr()) || {};
+  const vals  = saved.vals || {};
+
+  shift.slots.forEach(hh => {
+    const h    = parseInt(hh);
+    const end  = pad(h+1);
+    const label= `${hh}:00 – ${end}:00`;
+    const val  = vals[hh] ?? '';
+    const ph   = val!=='' ? parseInt(val) : null;
+    const now  = new Date();
+    const curH = now.getHours();
+
+    const isFuture  = curH < h;
+    const isCurrent = curH === h;
+    const needsFill = (curH > h || (curH === h && now.getMinutes() >= 55)) && ph === null;
+
+    const card = document.createElement('div');
+    card.className = 'scard'
+      + (isFuture  ? ' future' : '')
+      + (isCurrent ? ' active' : '')
+      + (needsFill ? ' warn'   : '')
+      + (ph!==null ? ' '+bg(ph): '');
+    card.id = `c-${hh}`;
+
+    card.innerHTML = `
+      <div class="stime">${label}</div>
+      <input class="sinput" type="number" min="0" max="9999"
+        placeholder="—" value="${val}" id="i-${hh}" oninput="onChange('${hh}')">
+      <div class="shint">обращений в счётчике</div>
+      <div class="sbar ${ph!==null?br(ph):''}" id="b-${hh}"></div>
+    `;
+    grid.appendChild(card);
+  });
+
+  updSummary();
+  updComment();
+}
+
+function onChange(hh){
+  const v  = document.getElementById(`i-${hh}`).value.trim();
+  const ph = v!=='' ? parseInt(v) : null;
+  const card= document.getElementById(`c-${hh}`);
+  const bar = document.getElementById(`b-${hh}`);
+
+  ['bgr','bgy','bgp','bgb','warn'].forEach(c=>card.classList.remove(c));
+  ['brr','bry','brp','brb'].forEach(c=>bar.classList.remove(c));
+
+  if(ph!==null&&!isNaN(ph)){ card.classList.add(bg(ph)); bar.classList.add(br(ph)); }
+
+  updSummary(); updComment();
+}
+
+function collectVals(){
+  const vals = {};
+  SHIFTS[CU.shiftId].slots.forEach(hh=>{
+    const el = document.getElementById(`i-${hh}`);
+    if(!el) return;
+    const v = el.value.trim();
+    if(v!==''){ const n=parseInt(v); if(!isNaN(n)) vals[hh]=n; }
+  });
+  return vals;
+}
+
+function updSummary(){
+  const vals = collectVals();
+  const nums = Object.values(vals);
+  const total= nums.reduce((a,b)=>a+b,0);
+  const avg  = nums.length>0 ? (total/nums.length).toFixed(1) : null;
+  const tot  = SHIFTS[CU.shiftId].slots.length;
+
+  document.getElementById('stotal').textContent = total;
+  document.getElementById('savg').textContent   = avg??'—';
+  document.getElementById('sdone').textContent  = `${nums.length}/${tot}`;
+
+  const avgEl = document.getElementById('savg');
+  if(avg!==null){
+    const v=parseFloat(avg);
+    avgEl.style.color = v>=7?'var(--bright)':v>=6?'var(--pale)':v>=4?'var(--yellow)':'var(--red)';
+  } else avgEl.style.color='var(--text)';
+}
+
+function updComment(){
+  const hasRed = Object.values(collectVals()).some(v=>v>=1&&v<=3);
+  document.getElementById('csec').classList.toggle('on', hasRed);
+}
+
+function saveData(){
+  const today = todayStr();
+  save(CU.name, today, {
+    name:CU.name, tab:CU.tab, shift:CU.shiftId, date:today,
+    savedAt:new Date().toISOString(),
+    vals:collectVals(),
+    comment:document.getElementById('cmt').value
+  });
+  showToast('✅ Данные сохранены');
+}
+
+// ══════════════════════════════════════════
+//  COLOUR HELPERS
+// ══════════════════════════════════════════
+function bg(v){ return v>=7?'bgb':v===6?'bgp':v>=4?'bgy':'bgr'; }
+function br(v){ return v>=7?'brb':v===6?'brp':v>=4?'bry':'brr'; }
+function cc(v){ return v>=7?'cb':v===6?'cp':v>=4?'cy':'cr'; }
+function cv(v){ return v>=7?'#2dff6e':v===6?'#7ecf72':v>=4?'#f5c842':'#ff6060'; }
+
+// ══════════════════════════════════════════
+//  TICKER (runs every second)
+// ══════════════════════════════════════════
+function startTicker(){
+  clearInterval(tickerInterval);
+  tickerInterval = setInterval(tick, 1000);
+  tick();
+}
+
+function tick(){
+  const now = new Date();
+  const ts  = now.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const ds  = now.toLocaleDateString('ru-RU',{weekday:'long',day:'numeric',month:'long'});
+
+  if(CU?.isAdmin){
+    document.getElementById('aclock').textContent = ts;
+    document.getElementById('adate').textContent  = ds;
+  } else if(CU){
+    document.getElementById('clock').textContent = ts;
+    document.getElementById('today').textContent = ds;
+    checkNotifications(now);
+    // refresh warn classes every minute
+    if(now.getSeconds()===0) refreshWarnClasses(now);
+  }
+}
+
+function refreshWarnClasses(now){
+  if(!CU||CU.isAdmin) return;
+  const vals = collectVals();
+  SHIFTS[CU.shiftId].slots.forEach(hh=>{
+    const card = document.getElementById(`c-${hh}`);
+    if(!card) return;
+    const h   = parseInt(hh);
+    const curH= now.getHours();
+    const m   = now.getMinutes();
+    const needsFill = (curH>h||(curH===h&&m>=55)) && vals[hh]===undefined;
+    if(needsFill) card.classList.add('warn');
+    else card.classList.remove('warn');
+  });
+}
+
+// ══════════════════════════════════════════
+//  NOTIFICATIONS
+//  PRE:  fires at HH:55 if slot HH not filled
+//  POST: fires at (HH+1):05 if slot HH still not filled
+// ══════════════════════════════════════════
+function askNotifPerm(){
+  if('Notification'in window && Notification.permission==='default')
+    Notification.requestPermission();
+}
+
+function checkNotifications(now){
+  if(!CU||CU.isAdmin) return;
+  const H = now.getHours();
+  const M = now.getMinutes();
+  const S = now.getSeconds();
+  if(S!==0) return; // fire only at exact second :00 of each minute
+
+  const vals = collectVals();
+
+  SHIFTS[CU.shiftId].slots.forEach(hh=>{
+    const h = parseInt(hh);
+    if(!NS[hh]) NS[hh]={ pre:false, post:false };
+
+    const filled = vals[hh]!==undefined;
+
+    // Reset flags once slot is filled
+    if(filled){ NS[hh].pre=false; NS[hh].post=false; return; }
+
+    // PRE: at HH:55
+    if(H===h && M===55 && !NS[hh].pre){
+      NS[hh].pre = true;
+      fireNotif(hh,'pre');
+    }
+    // POST: at (HH+1):05
+    const postH = h+1;
+    if(H===postH && M===5 && !NS[hh].post){
+      NS[hh].post = true;
+      fireNotif(hh,'post');
+    }
+  });
+}
+
+function fireNotif(hh, type){
+  const h      = parseInt(hh);
+  const period = `${hh}:00 – ${pad(h+1)}:00`;
+  const isPost = type==='post';
+
+  document.getElementById('nicon').textContent  = isPost ? '🔔' : '⏰';
+  document.getElementById('ntitle').textContent = isPost ? 'Данные ещё не внесены!' : 'Скоро конец часа!';
+  document.getElementById('nperiod').textContent= period;
+  document.getElementById('nbody').textContent  = isPost
+    ? `Период ${period} завершился 5 минут назад. Пожалуйста, внесите значение счётчика веб-КЦ.`
+    : `До конца периода ${period} осталось 5 минут. Внесите значение счётчика в веб-КЦ.`;
+
+  document.getElementById('notif-overlay').classList.add('show');
+  playBeep(isPost ? [880,660,440] : [440,660,880]);
+
+  if('Notification'in window && Notification.permission==='granted'){
+    new Notification(isPost?'🔔 Данные ещё не внесены!':'⏰ Скоро конец часа!',{
+      body:`Период ${period}. Внесите данные счётчика веб-КЦ.`,
+      tag:'tr-'+hh+type
+    });
+  }
+}
+
+function dismissNotif(){
+  document.getElementById('notif-overlay').classList.remove('show');
+}
+
+function playBeep(freqs){
+  try{
+    const ctx=new(window.AudioContext||window.webkitAudioContext)();
+    freqs.forEach((f,i)=>setTimeout(()=>{
+      const o=ctx.createOscillator(), g=ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.frequency.value=f;
+      g.gain.setValueAtTime(0.25,ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.35);
+      o.start(ctx.currentTime); o.stop(ctx.currentTime+0.35);
+    },i*220));
+  }catch(e){}
+}
+
+// ══════════════════════════════════════════
+//  ADMIN
+// ══════════════════════════════════════════
+function renderAdmin(sid){
+  adminShift = sid || adminShift;
+  const shift   = SHIFTS[adminShift];
+  const today   = todayStr();
+  const workers = Object.entries(USERS).filter(([,u])=>!u.isAdmin&&u.shiftId===adminShift).map(([,u])=>u);
+
+  // Tabs
+  const tabsEl = document.getElementById('atabs');
+  tabsEl.innerHTML='';
+  Object.entries(SHIFTS).forEach(([id,s])=>{
+    const btn=document.createElement('button');
+    btn.className='atab'+(id===adminShift?' on':'');
+    btn.textContent=s.label;
+    btn.onclick=()=>renderAdmin(id);
+    tabsEl.appendChild(btn);
+  });
+
+  const grid=document.getElementById('agrid');
+  grid.innerHTML='';
+  if(!workers.length){ grid.innerHTML='<div class="empty-state">Нет сотрудников</div>'; return; }
+
+  workers.forEach(w=>{
+    const data  = load(w.name, today);
+    const vals  = data?.vals||{};
+    const nums  = Object.values(vals);
+    const total = nums.reduce((a,b)=>a+b,0);
+    const avg   = nums.length>0?(total/nums.length).toFixed(1):null;
+    const savedAt= data?.savedAt
+      ? new Date(data.savedAt).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})
+      : null;
+
+    const av=avg?parseFloat(avg):null;
+    const ac=av===null?'var(--muted)':av>=7?'var(--bright)':av>=6?'var(--pale)':av>=4?'var(--yellow)':'var(--red)';
+    const ab=av===null?'rgba(255,255,255,.05)':av>=7?'rgba(45,255,110,.1)':av>=6?'rgba(126,207,114,.1)':av>=4?'rgba(245,200,66,.1)':'rgba(255,69,69,.1)';
+
+    const card=document.createElement('div');
+    card.className='apcard';
+    card.innerHTML=`
+      <div class="aphdr">
+        <div class="apname">${w.name}</div>
+        <div style="font-size:11px;color:var(--muted);">${w.tab}</div>
+        ${avg!==null?`<div class="apavg" style="color:${ac};background:${ab};">${avg}/ч</div>`:''}
+        <div class="aplast">${savedAt?'💾 '+savedAt:'<span style="color:var(--red)">⬜ нет данных</span>'}</div>
+      </div>
+      <div class="aprow" id="ar-${w.tab}"></div>
+      ${data?.comment?`<div class="apcmt">🔴 ${data.comment}</div>`:''}
+    `;
+
+    const row=card.querySelector(`#ar-${w.tab}`);
+    shift.slots.forEach(hh=>{
+      const v=vals[hh]??null;
+      const chip=document.createElement('div');
+      chip.className='achip '+(v===null?'empty':cc(v));
+      chip.innerHTML=`
+        <span class="achip-t">${hh}–${pad(parseInt(hh)+1)}</span>
+        <span class="achip-v" style="color:${v!==null?cv(v):'var(--muted)'}">${v!==null?v:'—'}</span>
+      `;
+      row.appendChild(chip);
+    });
+    grid.appendChild(card);
+  });
+}
+
+// ══════════════════════════════════════════
+//  CREDS MODAL
+// ══════════════════════════════════════════
+function showCreds(){
+  const body = document.getElementById('creds-body');
+  const groups = {'04-16':[],'07-19':[],'06-15':[]};
+  Object.entries(USERS).forEach(([login,u])=>{
+    if(u.isAdmin) return;
+    groups[u.shiftId].push({login,u});
+  });
+
+  let html='';
+  Object.entries(groups).forEach(([sid,workers])=>{
+    html+=`<div style="font-size:12px;font-weight:600;color:var(--muted);margin:14px 0 8px;text-transform:uppercase;">${SHIFTS[sid].label}</div>`;
+    html+='<table class="creds-table"><tr><th>ФИО</th><th>Логин</th><th>Пароль</th></tr>';
+    workers.forEach(({login,u})=>{
+      html+=`<tr><td>${u.name}</td><td><span class="mono">${login}</span></td><td><span class="mono">${u.password}</span></td></tr>`;
+    });
+    html+='</table>';
+  });
+  body.innerHTML=html;
+  document.getElementById('creds-overlay').style.display='flex';
+}
+
+function hideCreds(){
+  document.getElementById('creds-overlay').style.display='none';
+}
+
+// ══════════════════════════════════════════
+//  EXPORT CSV
+// ══════════════════════════════════════════
+function exportCSV(){
+  const shift   = SHIFTS[adminShift];
+  const today   = todayStr();
+  const workers = Object.values(USERS).filter(u=>!u.isAdmin&&u.shiftId===adminShift);
+
+  const header  = ['ФИО','Таб. №',...shift.slots.map(hh=>`${hh}:00-${pad(parseInt(hh)+1)}:00`),'Среднее/ч','Комментарий'];
+  const rows    = workers.map(w=>{
+    const data  = load(w.name, today);
+    const vals  = data?.vals||{};
+    const nums  = shift.slots.map(hh=>vals[hh]??'');
+    const filled= nums.filter(v=>v!=='');
+    const avg   = filled.length>0?(filled.reduce((a,b)=>a+b,0)/filled.length).toFixed(1):'';
+    return [w.name,w.tab,...nums,avg,data?.comment||''];
+  });
+
+  const csv=[header,...rows].map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv);
+  a.download=`analytics_${today}_${adminShift}.csv`;
+  a.click();
+}
+
+// ══════════════════════════════════════════
+//  TOAST
+// ══════════════════════════════════════════
+function showToast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('on');
+  setTimeout(()=>t.classList.remove('on'),2600);
+}
+</script>
+</body>
+</html>
