@@ -322,13 +322,18 @@ textarea.desc-input::placeholder{color:var(--muted);}
         <div class="staff-grid" id="staff-list"><div class="spinner"></div></div>
         <div class="add-card">
           <div class="add-card-title">&#10133; Добавить сотрудника</div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.6;background:rgba(61,126,255,.08);border:1px solid rgba(61,126,255,.2);border-radius:8px;padding:10px 12px;">
+            &#8505;&#65039; Сначала создай аккаунт сотрудника в
+            <a href="https://console.firebase.google.com/u/0/project/tracker-19157/authentication/users" target="_blank" style="color:var(--accent);">Firebase Authentication</a>
+            (Add user → email + пароль). Затем вставь его email сюда — профиль привяжется автоматически.
+          </div>
           <div class="form-row">
             <div class="field-sm"><label>Имя</label><input type="text" id="new-name" placeholder="Иванова Мария С."></div>
             <div class="field-sm"><label>Таб. номер</label><input type="text" id="new-tab" placeholder="1234567"></div>
           </div>
           <div class="form-row form-row-3">
-            <div class="field-sm"><label>Логин</label><input type="text" id="new-email" placeholder="m.ivanova"></div>
-            <div class="field-sm"><label>Пароль</label><input type="text" id="new-pass" placeholder="мин. 4 символа"></div>
+            <div class="field-sm"><label>Email (из Firebase Auth)</label><input type="email" id="new-email" placeholder="m.ivanova@company.ru"></div>
+            <div class="field-sm"><label>&nbsp;</label><div style="font-size:11px;color:var(--muted);padding-top:8px;">Пароль задаётся в Firebase Console</div></div>
             <div class="field-sm"><label>График</label>
               <select id="new-shift">
                 <option value="04-16">04:00 – 16:00</option>
@@ -337,7 +342,7 @@ textarea.desc-input::placeholder{color:var(--muted);}
               </select>
             </div>
           </div>
-          <button class="btn-add" id="add-btn">Добавить сотрудника</button>
+          <button class="btn-add" id="add-btn">Добавить профиль</button>
           <div class="auth-err" id="add-err"></div>
         </div>
       </div>
@@ -432,10 +437,28 @@ onAuthStateChanged(auth, async (firebaseUser) => {
   if (snap.exists()) {
     CU = { uid: firebaseUser.uid, email: firebaseUser.email, ...snap.val() };
   } else {
-    // First login — bootstrap as admin if email matches
-    CU = { uid: firebaseUser.uid, email: firebaseUser.email,
-           name: 'Руководитель', isAdmin: true };
-    await set(ref(db, 'users/'+firebaseUser.uid), { name:'Руководитель', isAdmin:true, email:firebaseUser.email });
+    // Check if admin
+    if (firebaseUser.email === ADMIN_EMAIL) {
+      CU = { uid: firebaseUser.uid, email: firebaseUser.email,
+             name: 'Руководитель', isAdmin: true };
+      await set(ref(db, 'users/'+firebaseUser.uid), { name:'Руководитель', isAdmin:true, email:firebaseUser.email });
+    } else {
+      // Check pending_users by email — promote to users on first login
+      const emailKey = firebaseUser.email.replace(/[.#$\[\]]/g,'_');
+      const pendingSnap = await get(child(ref(db), 'pending_users/'+emailKey));
+      if (pendingSnap.exists()) {
+        const profile = pendingSnap.val();
+        CU = { uid: firebaseUser.uid, email: firebaseUser.email, ...profile };
+        // Move from pending to users
+        await set(ref(db, 'users/'+firebaseUser.uid), { ...profile, uid: firebaseUser.uid });
+        await remove(ref(db, 'pending_users/'+emailKey));
+      } else {
+        // Unknown user — sign out
+        await signOut(auth);
+        document.getElementById('auth-err').textContent = 'Профиль не найден. Обратитесь к администратору.';
+        return;
+      }
+    }
   }
 
   document.getElementById('auth-screen').style.display = 'none';
@@ -674,12 +697,22 @@ function renderToday() {
 
 // ── ADMIN STAFF ─────────────────────────────────────
 async function renderStaff() {
-  const snap = await get(child(ref(db),'users'));
-  const users = snap.exists() ? snap.val() : {};
+  const [usersSnap, pendingSnap] = await Promise.all([
+    get(child(ref(db),'users')),
+    get(child(ref(db),'pending_users'))
+  ]);
+  const users   = usersSnap.exists()   ? usersSnap.val()   : {};
+  const pending = pendingSnap.exists() ? pendingSnap.val() : {};
   const list = document.getElementById('staff-list');
-  const workers = Object.entries(users).filter(([,u])=>!u.isAdmin);
-  if(!workers.length){ list.innerHTML='<div class="empty">&#128101; Нет сотрудников</div>'; return; }
-  list.innerHTML = workers.map(([uid,u])=>
+
+  const activeWorkers  = Object.entries(users).filter(([,u])=>!u.isAdmin);
+  const pendingWorkers = Object.entries(pending);
+
+  if(!activeWorkers.length && !pendingWorkers.length){
+    list.innerHTML='<div class="empty">&#128101; Нет сотрудников</div>'; return;
+  }
+
+  const activeHtml = activeWorkers.map(([uid,u])=>
     '<div class="staff-card">'+
       '<div class="staff-ava">'+initials(u.name)+'</div>'+
       '<div class="staff-info">'+
@@ -695,48 +728,65 @@ async function renderStaff() {
       '</div>'+
     '</div>'
   ).join('');
+
+  const pendingHtml = pendingWorkers.map(([key,u])=>
+    '<div class="staff-card" style="opacity:.7;border-style:dashed">'+
+      '<div class="staff-ava" style="background:var(--s3)">'+initials(u.name)+'</div>'+
+      '<div class="staff-info">'+
+        '<div class="staff-name">'+u.name+' <span style="font-size:10px;color:var(--yellow);background:rgba(245,200,66,.1);padding:1px 7px;border-radius:10px;">ожидает входа</span></div>'+
+        '<div class="staff-meta">'+
+          '<span>'+(u.tab||'—')+'</span>'+
+          '<span>'+(SHIFTS[u.shift]?.label||u.shift||'—')+'</span>'+
+          '<span>'+u.email+'</span>'+
+        '</div>'+
+      '</div>'+
+      '<div class="staff-actions">'+
+        '<button class="btn-icon del" data-uid="pending_'+key+'" data-name="'+u.name.replace(/"/g,'&quot;')+'">&#128465;</button>'+
+      '</div>'+
+    '</div>'
+  ).join('');
+
+  list.innerHTML = activeHtml + pendingHtml;
 }
 
 async function addStaff() {
   const name  = document.getElementById('new-name').value.trim();
   const tab   = document.getElementById('new-tab').value.trim();
   const email = document.getElementById('new-email').value.trim().toLowerCase();
-  const pass  = document.getElementById('new-pass').value.trim();
   const shift = document.getElementById('new-shift').value;
   const err   = document.getElementById('add-err');
   err.textContent = '';
-  if(!name||!email||!pass){ err.textContent='Заполните имя, email и пароль'; return; }
-  if(pass.length<6){ err.textContent='Пароль минимум 6 символов'; return; }
+  if(!name||!email){ err.textContent='Заполните имя и email'; return; }
 
   const btn = document.getElementById('add-btn');
-  btn.disabled=true; btn.textContent='Создаём…';
+  btn.disabled=true; btn.textContent='Сохраняем…';
   try {
-    const adminUser = auth.currentUser;
-    const adminEmail = adminUser.email;
-    // Create user in Firebase Auth
-    const cred = await createUserWithEmailAndPassword(auth, email, pass);
-    const uid  = cred.user.uid;
-    // Write profile
-    await set(ref(db,'users/'+uid), { name, tab, email, shift, isAdmin:false });
-    // Re-auth as admin — prompt for admin password
-    const adminPass = prompt('Для завершения введите ваш пароль администратора:');
-    if(adminPass) await signInWithEmailAndPassword(auth, adminEmail, adminPass);
-    ['new-name','new-tab','new-email','new-pass'].forEach(id=>document.getElementById(id).value='');
+    // Store profile keyed by email (sanitised) — matched on login
+    const emailKey = email.replace(/[.#$\[\]]/g,'_');
+    await set(ref(db,'pending_users/'+emailKey), { name, tab, email, shift, isAdmin:false });
+    ['new-name','new-tab','new-email'].forEach(id=>document.getElementById(id).value='');
     await renderStaff();
-    toast(name+' добавлен(а)');
+    toast(name+' добавлен(а) — теперь создай аккаунт в Firebase Auth');
   } catch(e) {
-    err.textContent = e.code==='auth/email-already-in-use' ? 'Email уже используется' : 'Ошибка: '+e.message;
+    err.textContent = 'Ошибка: '+e.message;
   } finally {
-    btn.disabled=false; btn.textContent='Добавить сотрудника';
+    btn.disabled=false; btn.textContent='Добавить профиль';
   }
+
 }
+
 
 let _delUid = null;
 function openDel(uid,name){ _delUid=uid; document.getElementById('del-modal-sub').textContent='Удалить "'+name+'"?'; document.getElementById('del-modal').classList.add('open'); }
 function closeDel(){ document.getElementById('del-modal').classList.remove('open'); _delUid=null; }
 async function confirmDel(){
   if(!_delUid) return;
-  await remove(ref(db,'users/'+_delUid));
+  if(_delUid.startsWith('pending_')){
+    const key = _delUid.replace('pending_','');
+    await remove(ref(db,'pending_users/'+key));
+  } else {
+    await remove(ref(db,'users/'+_delUid));
+  }
   closeDel(); await renderStaff(); toast('Удалено');
 }
 
