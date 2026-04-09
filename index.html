@@ -205,6 +205,29 @@ textarea.desc-input::placeholder{color:var(--muted);}
 .overview-table td{padding:13px 16px;border-bottom:1px solid var(--border);vertical-align:middle;}
 .overview-table tr:last-child td{border-bottom:none;}
 .overview-table tr:hover td{background:rgba(255,255,255,.02);}
+.admin-worker-card{background:var(--s1);border:1px solid var(--border);border-radius:var(--r);margin:0 0 12px;overflow:hidden;}
+.awc-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;cursor:pointer;transition:background .15s;}
+.awc-header:hover{background:rgba(255,255,255,.02);}
+.awc-name{font-size:14px;font-weight:600;}
+.awc-meta{font-size:11px;color:var(--muted);margin-top:2px;}
+.awc-right{display:flex;align-items:center;gap:10px;flex-shrink:0;}
+.awc-time{font-size:11px;color:var(--muted);}
+.awc-chevron{font-size:11px;color:var(--muted);transition:transform .2s;}
+.awc-body{display:none;border-top:1px solid var(--border);padding:14px 18px;}
+.awc-body.open{display:block;}
+.awc-slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin-bottom:12px;}
+.awc-slot{background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;}
+.awc-slot.col-red   {background:rgba(255,77,77,.08);  border-color:rgba(255,77,77,.3);}
+.awc-slot.col-yellow{background:rgba(245,200,66,.07); border-color:rgba(245,200,66,.25);}
+.awc-slot.col-pale  {background:rgba(126,207,114,.08);border-color:rgba(126,207,114,.25);}
+.awc-slot.col-green {background:rgba(34,216,122,.08); border-color:rgba(34,216,122,.25);}
+.awc-slot-time{font-size:10px;color:var(--muted);margin-bottom:4px;}
+.awc-slot-val{font-family:'Unbounded',sans-serif;font-size:16px;font-weight:700;}
+.awc-slot-rate{font-size:10px;font-weight:600;margin-top:2px;}
+.awc-slot-cmt{font-size:11px;color:var(--muted);margin-top:5px;font-style:italic;border-top:1px solid var(--border);padding-top:4px;}
+.awc-no-data{font-size:12px;color:var(--muted);padding:8px 0;}
+.admin-filter-wrap{padding:12px 18px 0;}
+
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);
   z-index:200;align-items:center;justify-content:center;}
 .modal-overlay.open{display:flex;}
@@ -310,12 +333,13 @@ textarea.desc-input::placeholder{color:var(--muted);}
         <div class="tbl-wrap">
           <div class="tbl-head">
             <div class="tbl-head-title">Данные за <span id="admin-date">—</span></div>
-            <button class="btn-sm" id="export-btn">&#11015; CSV</button>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <input type="text" id="filter-staff" placeholder="&#128269; Поиск по имени..."
+                style="background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:6px 12px;color:var(--text);font-family:'Mulish',sans-serif;font-size:12px;outline:none;width:180px;">
+              <button class="btn-sm" id="export-btn">&#11015; CSV</button>
+            </div>
           </div>
-          <table class="overview-table">
-            <thead><tr><th>Сотрудник</th><th>Итого / Ср./час</th><th>Обновлено</th><th>Комментарий</th></tr></thead>
-            <tbody id="today-tbody"><tr><td colspan="4"><div class="spinner"></div></td></tr></tbody>
-          </table>
+          <div id="today-cards"></div>
         </div>
       </div>
       <div id="tab-staff" class="hidden">
@@ -373,7 +397,8 @@ textarea.desc-input::placeholder{color:var(--muted);}
 //  4. Настройки (⚙) → Ваши приложения → Web → скопировать конфиг сюда
 // ═══════════════════════════════════════════════════════
 import { initializeApp }   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword }
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged,
+         createUserWithEmailAndPassword, setPersistence, browserLocalPersistence }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import { getDatabase, ref, set, get, onValue, remove, child }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
@@ -393,6 +418,9 @@ const ADMIN_EMAIL = 'einneuertags@gmail.com';
 const fbApp  = initializeApp(firebaseConfig);
 const auth   = getAuth(fbApp);
 const db     = getDatabase(fbApp);
+
+// Keep session across page reloads until explicit logout
+setPersistence(auth, browserLocalPersistence).catch(()=>{});
 
 // ── SHIFTS ──────────────────────────────────────────
 const SHIFTS = {
@@ -668,6 +696,8 @@ async function empSave() {
 }
 
 // ── ADMIN TODAY (live) ──────────────────────────────
+let _allWorkerData = []; // cache for filter
+
 function renderToday() {
   if(_unsubToday){ _unsubToday(); _unsubToday=null; }
   const today = todayStr();
@@ -675,24 +705,75 @@ function renderToday() {
     const entries = snap.exists() ? snap.val() : {};
     const usersSnap = await get(child(ref(db),'users'));
     const users = usersSnap.exists() ? usersSnap.val() : {};
-    const tbody = document.getElementById('today-tbody');
     const workers = Object.entries(users).filter(([,u])=>!u.isAdmin);
-    if(!workers.length){ tbody.innerHTML='<tr><td colspan="4"><div class="empty">Нет сотрудников</div></td></tr>'; return; }
-    tbody.innerHTML = workers.map(([uid,u])=>{
-      const e=entries[uid], vals=e?.vals||{}, nums=Object.values(vals);
-      const total=nums.length>0?Math.max(...nums):null;
-      const sh=SHIFTS[u.shift], wh=sh?.workHours||11;
-      const avg=total!==null?(total/wh).toFixed(1):null;
-      const av=avg?parseFloat(avg):null, cls=pillCls(av);
-      const time=e?.savedAt?new Date(e.savedAt).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}):null;
-      return '<tr>'+
-        '<td><b>'+u.name+'</b><br><span style="font-size:11px;color:var(--muted)">'+(u.tab||'')+' &middot; '+(sh?.label||u.shift||'')+'</span></td>'+
-        '<td>'+(total!==null?'<span class="status-pill '+cls+'">'+total+' <span style="opacity:.6;font-size:10px">('+avg+'/ч)</span></span>':'<span style="color:var(--muted);font-size:12px">нет данных</span>')+'</td>'+
-        '<td style="font-size:12px;color:var(--muted)">'+(time||'—')+'</td>'+
-        '<td style="font-size:12px;color:var(--muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(e?.desc||'—')+'</td>'+
-      '</tr>';
-    }).join('');
+    _allWorkerData = workers.map(([uid,u])=>({ uid, u, e: entries[uid]||null }));
+    applyFilterAndRender();
   });
+}
+
+function applyFilterAndRender() {
+  const q = (document.getElementById('filter-staff')?.value||'').toLowerCase().trim();
+  const filtered = q ? _allWorkerData.filter(({u})=>u.name.toLowerCase().includes(q)) : _allWorkerData;
+  const container = document.getElementById('today-cards');
+  if(!container) return;
+
+  if(!filtered.length){
+    container.innerHTML='<div class="empty" style="padding:32px">'+( _allWorkerData.length ? '&#128269; Не найдено' : 'Нет сотрудников')+'</div>';
+    return;
+  }
+
+  container.innerHTML = filtered.map(({uid,u,e})=>{
+    const vals    = e?.vals||{};
+    const comments= e?.comments||{};
+    const nums    = Object.values(vals);
+    const total   = nums.length>0?Math.max(...nums):null;
+    const sh      = SHIFTS[u.shift];
+    const wh      = sh?.workHours||11;
+    const avg     = total!==null?(total/wh).toFixed(1):null;
+    const av      = avg?parseFloat(avg):null;
+    const cls     = pillCls(av);
+    const time    = e?.savedAt?new Date(e.savedAt).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}):null;
+
+    // Per-hour slots
+    const slotsHtml = sh ? sh.slots.map((hh,idx)=>{
+      const v = vals[hh]??null;
+      const c = e?.comments?.[hh]||'';
+      const rate = v!==null ? Math.round(v/(idx+1)*10)/10 : null;
+      const sc = rate!==null?(rate>=7?'col-green':rate>=6?'col-pale':rate>=4?'col-yellow':'col-red'):'';
+      const rc = rate!==null?(rate>=7?'var(--green)':rate>=6?'var(--pale)':rate>=4?'var(--yellow)':'var(--red)'):'var(--muted)';
+      return '<div class="awc-slot '+sc+'">'+
+        '<div class="awc-slot-time">'+hh+':00–'+String(parseInt(hh)+1).padStart(2,'0')+':00</div>'+
+        '<div class="awc-slot-val" style="color:'+(v!==null?rc:'var(--muted)')+'">'+( v!==null?v:'—')+'</div>'+
+        (rate!==null?'<div class="awc-slot-rate" style="color:'+rc+'">'+rate+'/ч</div>':'')+
+        (c?'<div class="awc-slot-cmt">&#128172; '+c+'</div>':'')+
+      '</div>';
+    }).join('') : '<div class="awc-no-data">График не найден</div>';
+
+    return '<div class="admin-worker-card">'+
+      '<div class="awc-header" data-uid="'+uid+'">'+
+        '<div>'+
+          '<div class="awc-name">'+u.name+'</div>'+
+          '<div class="awc-meta">'+(u.tab||'')+' &middot; '+(sh?.label||u.shift||'—')+'</div>'+
+        '</div>'+
+        '<div class="awc-right">'+
+          (total!==null?'<span class="status-pill '+cls+'">'+total+' <span style="opacity:.6;font-size:10px">('+avg+'/ч)</span></span>':'<span style="font-size:12px;color:var(--muted)">нет данных</span>')+
+          (time?'<span class="awc-time">'+time+'</span>':'')+
+          '<span class="awc-chevron" id="chv-'+uid+'">&#9660;</span>'+
+        '</div>'+
+      '</div>'+
+      '<div class="awc-body" id="wc-'+uid+'">'+
+        '<div class="awc-slots">'+slotsHtml+'</div>'+
+      '</div>'+
+    '</div>';
+  }).join('');
+}
+
+function toggleWorkerCard(uid) {
+  const body = document.getElementById('wc-'+uid);
+  const chv  = document.getElementById('chv-'+uid);
+  if(!body) return;
+  const open = body.classList.toggle('open');
+  if(chv) chv.style.transform = open ? 'rotate(180deg)' : '';
 }
 
 // ── ADMIN STAFF ─────────────────────────────────────
@@ -838,6 +919,16 @@ document.addEventListener('DOMContentLoaded', ()=>{
   document.getElementById('add-btn').addEventListener('click', addStaff);
   document.getElementById('del-cancel-btn').addEventListener('click', closeDel);
   document.getElementById('del-confirm-btn').addEventListener('click', confirmDel);
+
+  // Admin filter
+  const filterInput = document.getElementById('filter-staff');
+  if(filterInput) filterInput.addEventListener('input', applyFilterAndRender);
+
+  // Admin worker card toggle via delegation
+  document.getElementById('today-cards').addEventListener('click', e=>{
+    const hdr = e.target.closest('.awc-header');
+    if(hdr) toggleWorkerCard(hdr.dataset.uid);
+  });
 
   document.getElementById('slots-grid').addEventListener('input', e=>{
     const si=e.target.closest('.slot-input');
